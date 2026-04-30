@@ -1,0 +1,1261 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DataScope — Buscador Excel</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --surface2: #1a1a26;
+    --border: #2a2a3d;
+    --accent: #6c63ff;
+    --accent2: #ff6b9d;
+    --accent3: #00d4aa;
+    --text: #e8e8f0;
+    --muted: #7070a0;
+    --year-colors: #6c63ff, #ff6b9d, #00d4aa, #ffa45c, #4fc3f7, #ce93d8, #80cbc4, #ffab91;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Background grid */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: 
+      linear-gradient(rgba(108,99,255,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(108,99,255,0.04) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* Glow blobs */
+  .glow-blob {
+    position: fixed;
+    border-radius: 50%;
+    filter: blur(80px);
+    opacity: 0.12;
+    pointer-events: none;
+    z-index: 0;
+  }
+  .blob1 { width: 400px; height: 400px; background: var(--accent); top: -100px; left: -100px; }
+  .blob2 { width: 300px; height: 300px; background: var(--accent2); bottom: 10%; right: -80px; }
+  .blob3 { width: 250px; height: 250px; background: var(--accent3); top: 40%; left: 40%; }
+
+  /* ── HEADER ── */
+  header {
+    position: relative;
+    z-index: 10;
+    padding: 32px 40px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+    backdrop-filter: blur(10px);
+    background: rgba(10,10,15,0.7);
+    position: sticky;
+    top: 0;
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .logo-icon {
+    width: 38px;
+    height: 38px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+  }
+  .logo-text {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 1.4rem;
+    letter-spacing: -0.5px;
+  }
+  .logo-text span { color: var(--accent); }
+
+  .header-badge {
+    font-size: 0.72rem;
+    padding: 4px 12px;
+    background: rgba(108,99,255,0.15);
+    border: 1px solid rgba(108,99,255,0.3);
+    border-radius: 20px;
+    color: #a09fff;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+
+  /* ── MAIN LAYOUT ── */
+  main {
+    position: relative;
+    z-index: 1;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 40px 24px 80px;
+  }
+
+  /* ── UPLOAD ZONE ── */
+  #upload-zone {
+    border: 2px dashed var(--border);
+    border-radius: 20px;
+    padding: 60px 40px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s;
+    background: var(--surface);
+    position: relative;
+    overflow: hidden;
+  }
+  #upload-zone::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(108,99,255,0.05), rgba(255,107,157,0.05));
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  #upload-zone:hover::before,
+  #upload-zone.drag-over::before { opacity: 1; }
+  #upload-zone:hover,
+  #upload-zone.drag-over {
+    border-color: var(--accent);
+    transform: scale(1.01);
+  }
+
+  .upload-icon {
+    font-size: 3rem;
+    margin-bottom: 16px;
+    display: block;
+  }
+  .upload-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin-bottom: 8px;
+  }
+  .upload-sub {
+    color: var(--muted);
+    font-size: 0.9rem;
+    margin-bottom: 24px;
+  }
+
+  .btn-upload {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: linear-gradient(135deg, var(--accent), #8b5cf6);
+    color: white;
+    border: none;
+    padding: 12px 28px;
+    border-radius: 12px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.95rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    box-shadow: 0 4px 20px rgba(108,99,255,0.3);
+  }
+  .btn-upload:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 30px rgba(108,99,255,0.4);
+  }
+
+  #file-input { display: none; }
+
+  /* ── FILE INFO BANNER ── */
+  #file-info {
+    display: none;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 20px 24px;
+    margin-bottom: 28px;
+    align-items: center;
+    gap: 16px;
+  }
+  .file-icon-wrap {
+    width: 44px;
+    height: 44px;
+    background: rgba(0,212,170,0.1);
+    border: 1px solid rgba(0,212,170,0.2);
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.3rem;
+    flex-shrink: 0;
+  }
+  .file-details { flex: 1; }
+  .file-name {
+    font-family: 'Syne', sans-serif;
+    font-weight: 600;
+    font-size: 0.95rem;
+  }
+  .file-meta {
+    color: var(--muted);
+    font-size: 0.8rem;
+    margin-top: 2px;
+  }
+  .btn-change {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    padding: 8px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.82rem;
+    transition: all 0.2s;
+    white-space: nowrap;
+  }
+  .btn-change:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* ── YEAR TABS ── */
+  #years-panel {
+    display: none;
+    margin-bottom: 28px;
+  }
+  .panel-label {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--muted);
+    margin-bottom: 10px;
+    font-weight: 500;
+  }
+  #year-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .year-tab {
+    padding: 7px 18px;
+    border-radius: 30px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-family: 'Syne', sans-serif;
+    font-weight: 600;
+    transition: all 0.2s;
+  }
+  .year-tab:hover {
+    border-color: currentColor;
+    opacity: 0.9;
+  }
+  .year-tab.active {
+    color: white;
+    border-color: transparent;
+  }
+  .year-tab[data-color="0"].active { background: #6c63ff; }
+  .year-tab[data-color="1"].active { background: #ff6b9d; }
+  .year-tab[data-color="2"].active { background: #00d4aa; }
+  .year-tab[data-color="3"].active { background: #ffa45c; }
+  .year-tab[data-color="4"].active { background: #4fc3f7; }
+  .year-tab[data-color="5"].active { background: #ce93d8; }
+  .year-tab[data-color="6"].active { background: #80cbc4; }
+  .year-tab[data-color="7"].active { background: #ffab91; }
+
+  .tab-all {
+    padding: 7px 18px;
+    border-radius: 30px;
+    border: 1px solid var(--accent);
+    background: rgba(108,99,255,0.12);
+    color: #a09fff;
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-family: 'Syne', sans-serif;
+    font-weight: 600;
+    transition: all 0.2s;
+  }
+  .tab-all.active {
+    background: var(--accent);
+    color: white;
+  }
+
+  /* ── SEARCH ENGINE ── */
+  #search-panel {
+    display: none;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 28px;
+    margin-bottom: 28px;
+  }
+
+  .search-main {
+    position: relative;
+    margin-bottom: 20px;
+  }
+  .search-icon {
+    position: absolute;
+    left: 18px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 1.1rem;
+    color: var(--muted);
+    pointer-events: none;
+  }
+  #search-input {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 16px 18px 16px 48px;
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 1.05rem;
+    transition: all 0.2s;
+    outline: none;
+  }
+  #search-input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(108,99,255,0.12);
+  }
+  #search-input::placeholder { color: var(--muted); }
+
+  /* Column filters */
+  .filters-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+  }
+  .filter-label {
+    font-size: 0.8rem;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .col-filter-wrap {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    flex: 1;
+  }
+  .col-btn {
+    padding: 5px 14px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 0.8rem;
+    font-family: 'DM Sans', sans-serif;
+    transition: all 0.15s;
+    white-space: nowrap;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .col-btn:hover { border-color: var(--accent); color: #a09fff; }
+  .col-btn.active {
+    background: rgba(108,99,255,0.15);
+    border-color: var(--accent);
+    color: #a09fff;
+  }
+  .col-btn.active-all {
+    background: rgba(0,212,170,0.12);
+    border-color: var(--accent3);
+    color: var(--accent3);
+  }
+
+  /* Search stats */
+  #search-stats {
+    display: none;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .stat-chip {
+    font-size: 0.8rem;
+    padding: 4px 12px;
+    border-radius: 20px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--muted);
+  }
+  .stat-chip strong { color: var(--text); }
+  .stat-chip.highlight {
+    background: rgba(108,99,255,0.1);
+    border-color: rgba(108,99,255,0.3);
+    color: #a09fff;
+  }
+  .stat-chip.highlight strong { color: white; }
+
+  /* ── RESULTS ── */
+  #results-section { display: none; }
+
+  .results-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .results-title {
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 1rem;
+  }
+
+  .view-toggle {
+    display: flex;
+    gap: 4px;
+    background: var(--surface2);
+    padding: 4px;
+    border-radius: 8px;
+  }
+  .view-btn {
+    padding: 6px 12px;
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    transition: all 0.15s;
+  }
+  .view-btn.active {
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+  }
+
+  /* Table view */
+  .table-wrap {
+    overflow-x: auto;
+    border-radius: 16px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+  }
+  thead th {
+    background: var(--surface2);
+    padding: 14px 16px;
+    text-align: left;
+    font-family: 'Syne', sans-serif;
+    font-weight: 600;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--muted);
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+    position: relative;
+  }
+  thead th:hover { color: var(--text); }
+  thead th .sort-icon {
+    opacity: 0.3;
+    margin-left: 4px;
+    font-size: 0.7rem;
+  }
+  thead th.sort-asc .sort-icon::after { content: '↑'; opacity: 1; }
+  thead th.sort-desc .sort-icon::after { content: '↓'; opacity: 1; }
+  thead th .sort-icon::after { content: '↕'; }
+
+  tbody tr {
+    border-bottom: 1px solid rgba(42,42,61,0.5);
+    transition: background 0.15s;
+  }
+  tbody tr:hover { background: rgba(108,99,255,0.05); }
+  tbody td {
+    padding: 12px 16px;
+    max-width: 250px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text);
+  }
+  tbody td:first-child {
+    font-family: 'Syne', sans-serif;
+    font-weight: 600;
+    font-size: 0.8rem;
+  }
+
+  .year-badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 20px;
+    font-size: 0.72rem;
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    color: white;
+  }
+
+  mark {
+    background: rgba(108,99,255,0.3);
+    color: #d4d0ff;
+    border-radius: 3px;
+    padding: 0 2px;
+  }
+
+  /* Card view */
+  #cards-grid {
+    display: none;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 16px;
+  }
+  .result-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 20px;
+    transition: all 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+  .result-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    opacity: 0.7;
+  }
+  .result-card:hover {
+    border-color: rgba(108,99,255,0.3);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 30px rgba(0,0,0,0.3);
+  }
+  .card-year-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  .card-row-num {
+    font-size: 0.72rem;
+    color: var(--muted);
+    font-family: 'Syne', sans-serif;
+  }
+  .card-fields {
+    display: grid;
+    gap: 8px;
+  }
+  .card-field {
+    display: grid;
+    grid-template-columns: 1fr 1.5fr;
+    gap: 8px;
+    align-items: start;
+    font-size: 0.83rem;
+  }
+  .field-key {
+    color: var(--muted);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    padding-top: 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .field-val {
+    color: var(--text);
+    font-weight: 400;
+    word-break: break-word;
+  }
+
+  /* Empty / loading */
+  .empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--muted);
+  }
+  .empty-icon { font-size: 2.5rem; margin-bottom: 12px; }
+  .empty-text { font-family: 'Syne', sans-serif; font-weight: 600; margin-bottom: 6px; }
+  .empty-sub { font-size: 0.85rem; }
+
+  /* Pagination */
+  #pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    margin-top: 24px;
+    flex-wrap: wrap;
+  }
+  .page-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 0.85rem;
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Syne', sans-serif;
+    font-weight: 600;
+  }
+  .page-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .page-btn.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: white;
+  }
+  .page-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+  .page-info {
+    font-size: 0.82rem;
+    color: var(--muted);
+    padding: 0 8px;
+  }
+
+  /* Progress bar */
+  #progress-bar {
+    display: none;
+    width: 100%;
+    height: 3px;
+    background: var(--surface2);
+    border-radius: 3px;
+    overflow: hidden;
+    margin-bottom: 20px;
+  }
+  #progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--accent2), var(--accent3));
+    border-radius: 3px;
+    animation: progress-anim 1.5s ease-in-out infinite;
+  }
+  @keyframes progress-anim {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(200%); }
+  }
+
+  /* Summary cards */
+  #summary-row {
+    display: none;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px;
+    margin-bottom: 28px;
+  }
+  .summary-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 16px 20px;
+    text-align: center;
+  }
+  .summary-num {
+    font-family: 'Syne', sans-serif;
+    font-size: 1.8rem;
+    font-weight: 800;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .summary-lbl {
+    font-size: 0.75rem;
+    color: var(--muted);
+    margin-top: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  /* Copy button */
+  .copy-row {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 12px;
+  }
+  .btn-copy {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    padding: 6px 14px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.78rem;
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .btn-copy:hover { border-color: var(--accent3); color: var(--accent3); }
+
+  /* Responsive */
+  @media (max-width: 640px) {
+    header { padding: 20px; }
+    main { padding: 24px 16px 60px; }
+    #search-panel { padding: 20px 16px; }
+    #cards-grid { grid-template-columns: 1fr; }
+    .card-field { grid-template-columns: 1fr; gap: 2px; }
+    .results-header { flex-direction: column; align-items: flex-start; }
+  }
+</style>
+</head>
+<body>
+
+<div class="glow-blob blob1"></div>
+<div class="glow-blob blob2"></div>
+<div class="glow-blob blob3"></div>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">🔍</div>
+    <div class="logo-text">Data<span>Scope</span></div>
+  </div>
+  <div class="header-badge">Buscador Excel Multi-Hoja</div>
+</header>
+
+<main>
+  <!-- UPLOAD -->
+  <div id="upload-zone" onclick="document.getElementById('file-input').click()"
+    ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event)">
+    <span class="upload-icon">📊</span>
+    <div class="upload-title">Carga tu archivo Excel</div>
+    <div class="upload-sub">Admite archivos con múltiples hojas por año · .xlsx · .xls</div>
+    <button class="btn-upload" onclick="event.stopPropagation(); document.getElementById('file-input').click()">
+      ⬆ Seleccionar archivo
+    </button>
+    <input type="file" id="file-input" accept=".xlsx,.xls" onchange="handleFile(event)">
+  </div>
+
+  <!-- Progress -->
+  <div id="progress-bar"><div id="progress-fill"></div></div>
+
+  <!-- File info -->
+  <div id="file-info">
+    <div class="file-icon-wrap">📄</div>
+    <div class="file-details">
+      <div class="file-name" id="fname">archivo.xlsx</div>
+      <div class="file-meta" id="fmeta"></div>
+    </div>
+    <button class="btn-change" onclick="resetAll()">↺ Cambiar archivo</button>
+  </div>
+
+  <!-- Summary row -->
+  <div id="summary-row">
+    <div class="summary-card">
+      <div class="summary-num" id="sum-hojas">0</div>
+      <div class="summary-lbl">Hojas / Años</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-num" id="sum-registros">0</div>
+      <div class="summary-lbl">Registros total</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-num" id="sum-columnas">0</div>
+      <div class="summary-lbl">Columnas</div>
+    </div>
+  </div>
+
+  <!-- Year tabs -->
+  <div id="years-panel">
+    <div class="panel-label">Filtrar por hoja / año</div>
+    <div id="year-tabs"></div>
+  </div>
+
+  <!-- Search panel -->
+  <div id="search-panel">
+    <div class="search-main">
+      <span class="search-icon">🔍</span>
+      <input type="text" id="search-input" placeholder="Escribe para buscar en todas las columnas…" 
+        oninput="performSearch()" autocomplete="off">
+    </div>
+    <div class="filters-row">
+      <span class="filter-label">Buscar en:</span>
+      <div class="col-filter-wrap" id="col-filters"></div>
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div id="search-stats">
+    <div class="stat-chip highlight"><strong id="st-found">0</strong> resultados</div>
+    <div class="stat-chip">de <strong id="st-total">0</strong> registros</div>
+    <div class="stat-chip" id="st-year-chip"></div>
+    <div class="stat-chip" id="st-col-chip"></div>
+    <div class="copy-row" style="margin: 0 0 0 auto;">
+      <button class="btn-copy" onclick="copyResults()">📋 Copiar resultados</button>
+    </div>
+  </div>
+
+  <!-- Results -->
+  <div id="results-section">
+    <div class="results-header">
+      <div class="results-title" id="results-title">Resultados</div>
+      <div class="view-toggle">
+        <button class="view-btn active" id="btn-table" onclick="setView('table')">☰ Tabla</button>
+        <button class="view-btn" id="btn-cards" onclick="setView('cards')">⊞ Tarjetas</button>
+      </div>
+    </div>
+
+    <!-- Table -->
+    <div class="table-wrap" id="table-wrap">
+      <table id="results-table">
+        <thead><tr id="thead-row"></tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+
+    <!-- Cards -->
+    <div id="cards-grid"></div>
+
+    <!-- Empty -->
+    <div class="empty-state" id="empty-state" style="display:none">
+      <div class="empty-icon">🔭</div>
+      <div class="empty-text">Sin resultados</div>
+      <div class="empty-sub">Intenta con otras palabras o cambia los filtros</div>
+    </div>
+
+    <!-- Pagination -->
+    <div id="pagination"></div>
+  </div>
+</main>
+
+<script>
+/* ── STATE ── */
+let allData = [];          // [{__sheet, __row, ...columns}]
+let columns = [];
+let sheets = [];
+let currentView = 'table';
+let activeSheet = 'ALL';
+let activeColumns = new Set();
+let searchTerm = '';
+let filteredData = [];
+let currentPage = 1;
+const PAGE_SIZE = 50;
+let sortCol = null;
+let sortDir = 'asc';
+
+const COLORS = ['#6c63ff','#ff6b9d','#00d4aa','#ffa45c','#4fc3f7','#ce93d8','#80cbc4','#ffab91'];
+
+/* ── FILE HANDLING ── */
+function handleDragOver(e) {
+  e.preventDefault();
+  document.getElementById('upload-zone').classList.add('drag-over');
+}
+function handleDragLeave() {
+  document.getElementById('upload-zone').classList.remove('drag-over');
+}
+function handleDrop(e) {
+  e.preventDefault();
+  document.getElementById('upload-zone').classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f) processFile(f);
+}
+function handleFile(e) {
+  const f = e.target.files[0];
+  if (f) processFile(f);
+}
+
+function processFile(file) {
+  showProgress(true);
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const wb = XLSX.read(e.target.result, { type: 'array' });
+      parseWorkbook(wb, file.name, file.size);
+    } catch(err) {
+      alert('Error al leer el archivo: ' + err.message);
+      showProgress(false);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function parseWorkbook(wb, name, size) {
+  allData = [];
+  sheets = wb.SheetNames;
+  const allCols = new Set();
+
+  sheets.forEach(sheetName => {
+    const ws = wb.Sheets[sheetName];
+    const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+    rows.forEach((row, idx) => {
+      const entry = { __sheet: sheetName, __row: idx + 2 };
+      Object.keys(row).forEach(k => {
+        allCols.add(k);
+        entry[k] = String(row[k] ?? '');
+      });
+      allData.push(entry);
+    });
+  });
+
+  columns = [...allCols];
+  activeColumns = new Set(columns);
+
+  // Update UI
+  showProgress(false);
+  document.getElementById('upload-zone').style.display = 'none';
+
+  const fi = document.getElementById('file-info');
+  fi.style.display = 'flex';
+  document.getElementById('fname').textContent = name;
+  document.getElementById('fmeta').textContent =
+    `${sheets.length} hoja(s) · ${allData.length.toLocaleString()} registros · ${columns.length} columnas · ${(size/1024).toFixed(1)} KB`;
+
+  // Summary
+  const sr = document.getElementById('summary-row');
+  sr.style.display = 'grid';
+  document.getElementById('sum-hojas').textContent = sheets.length;
+  document.getElementById('sum-registros').textContent = allData.length.toLocaleString();
+  document.getElementById('sum-columnas').textContent = columns.length;
+
+  buildYearTabs();
+  buildColFilters();
+  document.getElementById('years-panel').style.display = 'block';
+  document.getElementById('search-panel').style.display = 'block';
+  document.getElementById('results-section').style.display = 'block';
+  document.getElementById('search-stats').style.display = 'flex';
+
+  performSearch();
+}
+
+/* ── YEAR TABS ── */
+function buildYearTabs() {
+  const container = document.getElementById('year-tabs');
+  container.innerHTML = '';
+
+  const allBtn = document.createElement('button');
+  allBtn.className = 'tab-all active';
+  allBtn.textContent = 'Todos';
+  allBtn.onclick = () => selectSheet('ALL', allBtn);
+  container.appendChild(allBtn);
+
+  sheets.forEach((s, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'year-tab';
+    btn.setAttribute('data-color', i % 8);
+    btn.textContent = s;
+    btn.style.color = COLORS[i % 8];
+    btn.style.borderColor = COLORS[i % 8] + '44';
+    btn.onclick = () => selectSheet(s, btn);
+    container.appendChild(btn);
+  });
+}
+
+function selectSheet(name, btn) {
+  activeSheet = name;
+  currentPage = 1;
+  document.querySelectorAll('.year-tab, .tab-all').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  performSearch();
+}
+
+/* ── COLUMN FILTERS ── */
+function buildColFilters() {
+  const container = document.getElementById('col-filters');
+  container.innerHTML = '';
+
+  const allBtn = document.createElement('button');
+  allBtn.className = 'col-btn active-all';
+  allBtn.textContent = 'Todas las columnas';
+  allBtn.onclick = () => toggleAllCols(allBtn);
+  container.appendChild(allBtn);
+
+  columns.forEach(col => {
+    const btn = document.createElement('button');
+    btn.className = 'col-btn active';
+    btn.textContent = col;
+    btn.title = col;
+    btn.onclick = () => toggleCol(col, btn);
+    container.appendChild(btn);
+  });
+}
+
+function toggleAllCols(allBtn) {
+  const isAll = activeColumns.size === columns.length;
+  if (isAll) {
+    activeColumns.clear();
+    allBtn.classList.remove('active-all');
+    document.querySelectorAll('.col-btn:not(:first-child)').forEach(b => b.classList.remove('active'));
+  } else {
+    activeColumns = new Set(columns);
+    allBtn.classList.add('active-all');
+    document.querySelectorAll('.col-btn:not(:first-child)').forEach(b => b.classList.add('active'));
+  }
+  performSearch();
+}
+
+function toggleCol(col, btn) {
+  if (activeColumns.has(col)) {
+    activeColumns.delete(col);
+    btn.classList.remove('active');
+  } else {
+    activeColumns.add(col);
+    btn.classList.add('active');
+  }
+  // Update all-columns button
+  const allBtn = document.querySelector('.col-btn:first-child');
+  if (activeColumns.size === columns.length) {
+    allBtn.classList.add('active-all');
+  } else {
+    allBtn.classList.remove('active-all');
+  }
+  performSearch();
+}
+
+/* ── SEARCH ── */
+function performSearch() {
+  searchTerm = document.getElementById('search-input').value.trim().toLowerCase();
+  currentPage = 1;
+
+  let data = allData;
+
+  // Sheet filter
+  if (activeSheet !== 'ALL') {
+    data = data.filter(r => r.__sheet === activeSheet);
+  }
+
+  // Text search
+  if (searchTerm) {
+    const terms = searchTerm.split(/\s+/).filter(Boolean);
+    data = data.filter(row => {
+      return terms.every(term =>
+        [...activeColumns].some(col =>
+          String(row[col] ?? '').toLowerCase().includes(term)
+        )
+      );
+    });
+  }
+
+  // Sort
+  if (sortCol) {
+    data = [...data].sort((a, b) => {
+      const av = String(a[sortCol] ?? '').toLowerCase();
+      const bv = String(b[sortCol] ?? '').toLowerCase();
+      const num_a = parseFloat(av), num_b = parseFloat(bv);
+      if (!isNaN(num_a) && !isNaN(num_b)) {
+        return sortDir === 'asc' ? num_a - num_b : num_b - num_a;
+      }
+      return sortDir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
+    });
+  }
+
+  filteredData = data;
+  updateStats();
+  renderResults();
+}
+
+function updateStats() {
+  document.getElementById('st-found').textContent = filteredData.length.toLocaleString();
+  document.getElementById('st-total').textContent = 
+    (activeSheet === 'ALL' ? allData.length : allData.filter(r => r.__sheet === activeSheet).length).toLocaleString();
+
+  const yearChip = document.getElementById('st-year-chip');
+  yearChip.textContent = activeSheet === 'ALL' ? 'Todas las hojas' : `Hoja: ${activeSheet}`;
+  yearChip.style.display = 'inline-block';
+
+  const colChip = document.getElementById('st-col-chip');
+  if (activeColumns.size === columns.length) {
+    colChip.textContent = 'Todas las columnas';
+  } else {
+    colChip.textContent = `${activeColumns.size} columna(s) activa(s)`;
+  }
+  colChip.style.display = 'inline-block';
+}
+
+/* ── RENDER ── */
+function renderResults() {
+  const start = (currentPage - 1) * PAGE_SIZE;
+  const pageData = filteredData.slice(start, start + PAGE_SIZE);
+  const isEmpty = filteredData.length === 0;
+
+  document.getElementById('empty-state').style.display = isEmpty ? 'block' : 'none';
+  document.getElementById('table-wrap').style.display = (isEmpty || currentView !== 'table') ? 'none' : 'block';
+  document.getElementById('cards-grid').style.display = (isEmpty || currentView !== 'cards') ? 'none' : 'grid';
+
+  document.getElementById('results-title').textContent =
+    `${filteredData.length.toLocaleString()} resultados — página ${currentPage} de ${Math.max(1, Math.ceil(filteredData.length / PAGE_SIZE))}`;
+
+  if (isEmpty) { renderPagination(); return; }
+
+  if (currentView === 'table') renderTable(pageData);
+  else renderCards(pageData);
+  renderPagination();
+}
+
+function renderTable(data) {
+  const displayCols = columns.filter(c => activeColumns.has(c));
+
+  // Header
+  const thead = document.getElementById('thead-row');
+  thead.innerHTML = '<th>Hoja/Año <span class="sort-icon"></span></th>' +
+    displayCols.map(c =>
+      `<th onclick="sortBy('${c.replace(/'/g, "\\'")}')" class="${sortCol===c ? 'sort-'+sortDir : ''}">
+        ${escHtml(c)} <span class="sort-icon"></span>
+      </th>`
+    ).join('');
+
+  // Rows
+  const tbody = document.getElementById('tbody');
+  const sheetIdx = {};
+  sheets.forEach((s, i) => sheetIdx[s] = i);
+
+  tbody.innerHTML = data.map(row => {
+    const si = sheetIdx[row.__sheet] ?? 0;
+    const color = COLORS[si % 8];
+    const cells = displayCols.map(c =>
+      `<td title="${escHtml(String(row[c]??''))}">${highlight(String(row[c] ?? ''))}</td>`
+    ).join('');
+    return `<tr>
+      <td><span class="year-badge" style="background:${color}">${escHtml(row.__sheet)}</span></td>
+      ${cells}
+    </tr>`;
+  }).join('');
+}
+
+function renderCards(data) {
+  const displayCols = columns.filter(c => activeColumns.has(c));
+  const sheetIdx = {};
+  sheets.forEach((s, i) => sheetIdx[s] = i);
+
+  document.getElementById('cards-grid').innerHTML = data.map(row => {
+    const si = sheetIdx[row.__sheet] ?? 0;
+    const color = COLORS[si % 8];
+    const fields = displayCols.map(c =>
+      `<div class="card-field">
+        <div class="field-key" title="${escHtml(c)}">${escHtml(c)}</div>
+        <div class="field-val">${highlight(String(row[c] ?? ''))}</div>
+      </div>`
+    ).join('');
+    return `<div class="result-card" style="--card-color:${color}">
+      <style>.result-card:nth-child(n) { --c: ${color}; }</style>
+      <div style="position:absolute;top:0;left:0;right:0;height:3px;background:${color};opacity:0.7;border-radius:16px 16px 0 0"></div>
+      <div class="card-year-row">
+        <span class="year-badge" style="background:${color}">${escHtml(row.__sheet)}</span>
+        <span class="card-row-num">fila ${row.__row}</span>
+      </div>
+      <div class="card-fields">${fields}</div>
+    </div>`;
+  }).join('');
+}
+
+/* ── SORT ── */
+function sortBy(col) {
+  if (sortCol === col) {
+    sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+  } else {
+    sortCol = col;
+    sortDir = 'asc';
+  }
+  performSearch();
+}
+
+/* ── PAGINATION ── */
+function renderPagination() {
+  const total = Math.ceil(filteredData.length / PAGE_SIZE);
+  const pg = document.getElementById('pagination');
+  if (total <= 1) { pg.innerHTML = ''; return; }
+
+  let html = `<button class="page-btn" onclick="goPage(${currentPage-1})" ${currentPage===1?'disabled':''}>‹</button>`;
+
+  const pages = getPagesRange(currentPage, total);
+  pages.forEach(p => {
+    if (p === '...') html += `<span class="page-info">…</span>`;
+    else html += `<button class="page-btn ${p===currentPage?'active':''}" onclick="goPage(${p})">${p}</button>`;
+  });
+
+  html += `<button class="page-btn" onclick="goPage(${currentPage+1})" ${currentPage===total?'disabled':''}>›</button>`;
+  html += `<span class="page-info">${currentPage} / ${total}</span>`;
+  pg.innerHTML = html;
+}
+
+function getPagesRange(cur, total) {
+  if (total <= 7) return Array.from({length:total},(_,i)=>i+1);
+  if (cur <= 4) return [1,2,3,4,5,'...',total];
+  if (cur >= total-3) return [1,'...',total-4,total-3,total-2,total-1,total];
+  return [1,'...',cur-1,cur,cur+1,'...',total];
+}
+
+function goPage(p) {
+  const total = Math.ceil(filteredData.length / PAGE_SIZE);
+  if (p < 1 || p > total) return;
+  currentPage = p;
+  renderResults();
+  window.scrollTo({ top: 200, behavior: 'smooth' });
+}
+
+/* ── VIEW TOGGLE ── */
+function setView(v) {
+  currentView = v;
+  document.getElementById('btn-table').classList.toggle('active', v==='table');
+  document.getElementById('btn-cards').classList.toggle('active', v==='cards');
+  renderResults();
+}
+
+/* ── HELPERS ── */
+function highlight(text) {
+  if (!searchTerm) return escHtml(text);
+  const terms = searchTerm.split(/\s+/).filter(Boolean);
+  let result = escHtml(text);
+  terms.forEach(term => {
+    const re = new RegExp(`(${term.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')})`, 'gi');
+    result = result.replace(re, '<mark>$1</mark>');
+  });
+  return result;
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function showProgress(show) {
+  document.getElementById('progress-bar').style.display = show ? 'block' : 'none';
+}
+
+function resetAll() {
+  allData = []; columns = []; sheets = []; filteredData = [];
+  searchTerm = ''; activeSheet = 'ALL'; sortCol = null; currentPage = 1;
+  activeColumns = new Set();
+
+  document.getElementById('upload-zone').style.display = 'block';
+  document.getElementById('file-info').style.display = 'none';
+  document.getElementById('years-panel').style.display = 'none';
+  document.getElementById('search-panel').style.display = 'none';
+  document.getElementById('results-section').style.display = 'none';
+  document.getElementById('search-stats').style.display = 'none';
+  document.getElementById('summary-row').style.display = 'none';
+  document.getElementById('search-input').value = '';
+  document.getElementById('file-input').value = '';
+}
+
+function copyResults() {
+  const displayCols = columns.filter(c => activeColumns.has(c));
+  const header = ['Hoja', ...displayCols].join('\t');
+  const rows = filteredData.map(r =>
+    [r.__sheet, ...displayCols.map(c => r[c] ?? '')].join('\t')
+  ).join('\n');
+  navigator.clipboard.writeText(header + '\n' + rows).then(() => {
+    const btn = document.querySelector('.btn-copy');
+    btn.textContent = '✅ Copiado';
+    setTimeout(() => btn.innerHTML = '📋 Copiar resultados', 2000);
+  });
+}
+</script>
+</body>
+</html>
